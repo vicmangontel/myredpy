@@ -115,5 +115,5 @@ class TimeEntries(Controller):
 
     def get_text(self, text):
         # todo: replace this with a setting
-        text = text.replace('Axos Bank - ', '')
+        # text = text.replace('', '')
         return (text[: 40] + '..') if len(text) > 42 else text
