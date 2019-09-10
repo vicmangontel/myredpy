@@ -23,9 +23,8 @@ class Projects(Controller):
         ],
     )
     def detail(self):
-        id = int(self.app.pargs.project_id)
         try:
-            project = self.app.redmine.project.all().get(id, None)
+            project = self.app.redmine.project.all().get(int(self.app.pargs.project_id), None)
 
             if project is None:
                 self.app.log.warning('No project found with id {}'.format(id))

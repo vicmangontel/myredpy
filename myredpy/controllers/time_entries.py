@@ -82,7 +82,8 @@ class TimeEntries(Controller):
             entry_per_day = []
             day = monday
             for d in days_to_check:
-                entry_per_day.append(sum(e.hours for e in filter(lambda x: x.spent_on == day, entries)))
+                hours = sum(e.hours for e in filter(lambda x: x.spent_on == day, entries))
+                entry_per_day.append(hours)
                 headers.append('{}'.format(day.strftime('%a-%d.%m')))
                 day = day + timedelta(days=1)
 
@@ -100,18 +101,18 @@ class TimeEntries(Controller):
         self.app.log.info('Period Total Spent Time: {}'.format(sum(x for x in totals)))
 
     def get_projects(self):
-        active_projects = self.app.redmine.project.all().filter(status=1)
-        ignored_projects = self.app.config.get('myredpy', 'ignored_projects').split(',')
-        ignored_projects = list(map(int, ignored_projects))
+        ignored_projects = list(map(int, self.app.config.get('myredpy', 'ignored_projects').split(',')))
         result = []
-        for p in active_projects:
+        for p in self.app.redmine.project.all().filter(status=1):
             if p.id in ignored_projects:
                 continue
             result.append(p)
         return result
 
     def get_time_entries(self, user_id, project_id, from_date, to_date):
-        return self.app.redmine.time_entry.filter(user_id=user_id, project_id=project_id, from_date=from_date, to_date=to_date)
+        return self.app.redmine.time_entry.filter(
+            user_id=user_id, project_id=project_id, from_date=from_date, to_date=to_date
+        )
 
     def get_text(self, text):
         # todo: replace this with a setting
