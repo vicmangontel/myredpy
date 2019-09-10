@@ -9,8 +9,8 @@ myredpy:
 ### Set the default redmine user key 
 #  redmine_key: abcdfger1501610100
 
-### Set the default comma sepparated list of projects to ignore in time entries calculation. This is the project id
-#  ignored_projects: 10, 11, 50
+### Database file path
+# db_file: ~/.myredpy/db.json
 
 ### Toggle application level debug (does not toggle framework debugging)
 # debug: false
