@@ -13,7 +13,7 @@ class Projects(Controller):
         for project in self.app.redmine.project.all().filter(status=1):
             data.append([project.id, project.name, project.status])
 
-        self.app.render(data, headers=['id', 'name', 'status'])
+        self.app.render(data, headers=['id', 'name', 'status'], tablefmt='fancy_grid')
 
     @ex(
         help='gets the specified project details',
@@ -34,6 +34,6 @@ class Projects(Controller):
                              'identifier', 'status', 'created_on']
             data = [(x, y) for (x, y) in list(project) if x in filter_fields]
 
-            self.app.render(data, headers=['field', 'value'])
+            self.app.render(data, headers=['field', 'value'], tablefmt='fancy_grid')
         except TypeError as err:
             self.app.log.error('Cannot retrieve project: {}'.format(err))

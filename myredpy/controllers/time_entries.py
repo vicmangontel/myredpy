@@ -1,6 +1,8 @@
 from datetime import date, datetime, timedelta
 from tinydb import Query
 from cement import Controller, ex
+from myredpy.core.formatters import to_multiline_text
+from myredpy.core.settings_name import (OMITT_PREFIX_SETTING, IGNORED_PROJECTS_SETTING)
 
 
 class TimeEntries(Controller):
@@ -31,8 +33,8 @@ class TimeEntries(Controller):
             if user is None:
                 raise ValueError('Current user could not be found.')
 
-            if self.app.pargs.period is not None:
-                period = self.app.pargs.period
+            period = self.app.pargs.period
+            if period is not None:
                 if period == 'day':
                     self.today_entries(user.id)
                 if period == 'week':
@@ -40,8 +42,8 @@ class TimeEntries(Controller):
                 if period == 'last-week':
                     last_week_date = date.today() - timedelta(days=7)
                     self.entries_by_week(user.id, last_week_date, self.app.pargs.show_weekends)
-                if period == 'bi-week':
-                    print('bi-week')
+                if period == 'bi-weekly':
+                    print('bi-weekly')
                 if period == 'month':
                     print('month')
             else:
@@ -49,10 +51,6 @@ class TimeEntries(Controller):
         except Exception as e:
             self.app.log.debug(repr(traceback.extract_stack()))
             self.app.log.error(str(e), __name__)
-
-    @ex(help='display time entry summary by period')
-    def summary(self):
-        self.app.render('summary')
 
     def today_entries(self, user_id):
         projects = self.projects(self.ignored_projects())
@@ -69,11 +67,11 @@ class TimeEntries(Controller):
         # add totals row at the bottom
         data.append(['', 'TOTAL', total_hours])
         # render table
-        self.app.render(data, headers=['id', 'project', 'hours'])
+        print(datetime.now().strftime('%c'))
+        self.app.render(data, headers=['id', 'project', 'hours'], tablefmt='fancy_grid')
         self.display_daily_summary(total_hours)
 
     def entries_by_week(self, user_id, week_date=date.today(), show_weekends=False):
-        print(datetime.now().strftime('%c'))
         monday = week_date - timedelta(days=week_date.weekday())
         # move to the previous week if last-week options was sent.
         days_to_show = 5
@@ -82,6 +80,8 @@ class TimeEntries(Controller):
 
         data = []
         headers = ['project']
+        prefix_to_omitt = self.setting(OMITT_PREFIX_SETTING)
+
         for p in self.projects(self.ignored_projects()):
             entries = self.time_entries(user_id, p.id, monday, monday + timedelta(days=5))
             days_to_check = range(0, days_to_show)
@@ -93,40 +93,33 @@ class TimeEntries(Controller):
                 headers.append('{}'.format(day.strftime('%a-%d.%m')))
                 day = day + timedelta(days=1)
 
-            project_name = self.format_project_name(p.name)
-            project_entry = [self.format_project_name(p.name)]
+            project_entry = [to_multiline_text(p.name, omitt_prefix=prefix_to_omitt)]
             project_entry.extend(entry_per_day)
             data.append(project_entry)
 
-        # result = [sum(x) for x in zip(*data)]
         total_entry = ['TOTAL']
         totals = [sum([row[i] for row in data]) for i in range(1, len(data[0]))]
         total_entry.extend(totals)
         data.append(total_entry)
-        # main table -  tablefmt="grid"
-        self.app.render(data, headers=headers)
+        # main table
+        print(datetime.now().strftime('%c'))
+        self.app.render(data, headers=headers, tablefmt='fancy_grid')
         self.app.log.info('Period Total Spent Time: {}'.format(sum(x for x in totals)))
 
-    def ignored_projects(self):
+    def ignored_projects(self) -> []:
         '''Returns the list of ignored projects configured by settings'''
         try:
-            Setting = Query()
-            setting = self.app.db.search(Setting.name == 'ignored_projects')
-            if len(setting) == 0:
-                return []
-
-            if len(setting) > 1:
-                raise ValueError('Configuration setting error. There are more than 1 setting.')
-            return list(map(int, setting[0].get('value').split(',')))
+            id_list = self.setting(IGNORED_PROJECTS_SETTING).split(',')
+            return [int(d) for d in id_list] if id_list else []
         except Exception as e:
             self.app.log.error(str(e), __name__)
             return []
 
-    def projects(self, ignored_projects=[]):
+    def projects(self, ignored_projects=None):
         '''Returns active projects for the current User. Additionally a list of ignored projects can be passed.'''
         result = []
         for p in self.app.redmine.project.all().filter(status=1):
-            if p.id in ignored_projects:
+            if ignored_projects and p.id in ignored_projects:
                 continue
             result.append(p)
         return result
@@ -137,29 +130,17 @@ class TimeEntries(Controller):
             user_id=user_id, project_id=project_id, from_date=from_date, to_date=to_date
         )
 
-    def format_project_name(self, name, max_line_length=30):
-        # accumulated line length
-        ACC_length = 0
-        words = name.split(' ')
-        formatted_name = ''
-        for word in words:
-            # if ACC_length + len(word) and a space is <= max_line_length
-            if ACC_length + (len(word) + 1) <= max_line_length:
-                # append the word and a space
-                formatted_name = formatted_name + word + " "
-                # length = length + length of word + length of space
-                ACC_length = ACC_length + len(word) + 1
-            else:
-                # append a line break, then the word and a space
-                formatted_name = formatted_name + "\n" + word + " "
-                # reset counter of length to the length of a word and a space
-                ACC_length = len(word) + 1
-        return formatted_name
-
-    def display_daily_summary(self, hours):
+    def display_daily_summary(self, hours: int) -> None:
         '''Logs info according to the logged hours by day'''
         if hours == 8:
             self.app.log.info('All the hours for today has been entered')
 
         if hours > 8:
             self.app.log.warning('You have logged more than 8 hours today.')
+
+    def setting(self, setting_name: str) -> str:
+        '''Returns the setting value from the local db given the setting name'''
+        setting = self.app.db.search(Query().name == setting_name)
+        if setting:
+            return setting[0].get('value')
+        return None

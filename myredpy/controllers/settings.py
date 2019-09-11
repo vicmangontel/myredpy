@@ -1,8 +1,10 @@
 from tinydb import Query
 from cement import Controller, ex
+from myredpy.core.settings_name import (OMITT_PREFIX_SETTING, IGNORED_PROJECTS_SETTING)
 
 
 class Settings(Controller):
+
     class Meta:
         label = 'settings'
         stacked_type = 'nested'
@@ -11,24 +13,34 @@ class Settings(Controller):
             (['-e', '--edit'], {
                 'help': 'Edit the specified setting by passing the new values.',
                 'action': 'store',
-                'dest': 'newValue'
+                'dest': 'new_value'
             })
         ]
 
     @ex(help='View or edit the list of ignored projects')
     def ignored_projects(self):
-        SETTING_NAME = 'ignored_projects'
-        Setting = Query()
-        setting = self.app.db.search(Setting.name == SETTING_NAME)
+        setting = self.setting(IGNORED_PROJECTS_SETTING, self.app.pargs.new_value)
+        self.app.render(setting)
 
-        newValue = self.app.pargs.newValue
-        if newValue is not None:
-            if setting is None or len(setting) == 0:
-                self.app.db.insert({'name': SETTING_NAME, 'value': newValue})
+    @ex(help='View or edit the omitt project name prefix')
+    def omitt_prefix(self):
+        setting = self.setting(OMITT_PREFIX_SETTING, self.app.pargs.new_value)
+        self.app.render(setting)
+
+    def setting(self, setting_name, new_value=None) -> dict:
+        '''Gets or sets the setting specified by name.'''
+        Setting = Query()
+        setting = self.app.db.search(Setting.name == setting_name)
+        # editing or inserting a setting value
+        if new_value is not None:
+            if not setting:
+                self.app.db.insert({'name': setting_name, 'value': new_value})
             else:
-                self.app.db.update({'value': newValue}, Setting.name == SETTING_NAME)
+                self.app.db.update({'value': new_value}, Setting.name == setting_name)
+            return self.app.db.search(Setting.name == setting_name)
+        # retrieving the setting value
         else:
-            if setting is None or len(setting) == 0:
+            if not setting:
                 self.app.log.info('Setting has not been set. You can configure it using -e')
             else:
-                self.app.render(setting)
+                return self.app.db.search(Setting.name == setting_name)
