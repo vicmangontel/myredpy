@@ -39,8 +39,7 @@ class Settings(Controller):
                 self.app.db.update({'value': new_value}, Setting.name == setting_name)
             return self.app.db.search(Setting.name == setting_name)
         # retrieving the setting value
+        if not setting:
+            self.app.log.info('Setting has not been set. You can configure it using -e')
         else:
-            if not setting:
-                self.app.log.info('Setting has not been set. You can configure it using -e')
-            else:
-                return self.app.db.search(Setting.name == setting_name)
+            return self.app.db.search(Setting.name == setting_name)
