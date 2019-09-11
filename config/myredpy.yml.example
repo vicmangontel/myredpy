@@ -3,6 +3,15 @@
 
 myredpy:
 
+### Set the default redmine server url 
+#  redmine_url: https://www.redmine.com
+
+### Set the default redmine user key 
+#  redmine_key: abcdfger1501610100
+
+### Database file path
+# db_file: ~/.myredpy/db.json
+
 ### Toggle application level debug (does not toggle framework debugging)
 # debug: false
 
@@ -21,17 +30,12 @@ myredpy:
 ### The output handler label
 # output_handler: jinja2
 
-### sample foo option
-# foo: bar
-
-
 log.colorlog:
+### The level for which to log.  One of: info, warning, error, fatal, debug
+# level: debug
 
 ### Where the log file lives (no log file by default)
 # file: null
-
-### The level for which to log.  One of: info, warning, error, fatal, debug
-# level: info
 
 ### Whether or not to log to console
 # to_console: true
