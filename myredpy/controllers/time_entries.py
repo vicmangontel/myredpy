@@ -4,6 +4,7 @@ from tinydb import Query
 from cement import Controller, ex
 from myredpy.core.formatters import to_multiline_text
 from myredpy.core.settings_name import (OMITT_PREFIX_SETTING, IGNORED_PROJECTS_SETTING)
+from myredpy.core.api import Api
 
 
 class TimeEntries(Controller):
@@ -21,9 +22,10 @@ class TimeEntries(Controller):
             })
         ]
 
-    @ex(help='Today"s entries grouped by project')
+    @ex(help='Todays entries grouped by project')
     def today(self):
-        projects = self.projects(self.ignored_projects())
+        projects = self.app.api.projects()
+
         if len(projects) == 0:
             self.app.log.info('Projects were not found...')
             return
@@ -64,7 +66,7 @@ class TimeEntries(Controller):
         headers = ['project']
         prefix_to_omitt = self.setting(OMITT_PREFIX_SETTING)
 
-        for p in self.projects(self.ignored_projects()):
+        for p in self.app.api.projects():
             entries = self.time_entries(self.user_id(), p.id, monday, monday + timedelta(days=5))
             days_to_check = range(0, days_to_show)
             entry_per_day = []
@@ -101,19 +103,18 @@ class TimeEntries(Controller):
             total_days = last_day - 15
             date_range = (date(today.year, today.month, 16), date(today.year, today.month, last_day))
 
-        projects = self.projects(self.ignored_projects())
+        projects = self.app.api.projects()
         # retrieve and calculate time entries
         data = self.time_entries_by_date_range(projects, date_range, total_days)
-        self.app.render(data, headers="firstrow")
+        self.app.render(data, headers="firstrow", tablefmt='fancy_grid')
 
     @ex(help='Monthly entries for current period')
     def month(self):
         today = date.today()
         total_days = calendar.monthrange(today.year, today.month)[1]
         date_range = (date(today.year, today.month, 1), date(today.year, today.month, total_days))
-        projects = self.projects(self.ignored_projects())
-        data = self.time_entries_by_date_range(projects, date_range, total_days)
-        self.app.render(data, headers="firstrow")
+        data = self.time_entries_by_date_range(api.projects(), date_range, total_days)
+        self.app.render(data, headers="firstrow", tablefmt='fancy_grid')
 
     def time_entries_by_date_range(self, projects, date_range, total_days):
         w, h = (len(projects) + 2), (total_days + 2)
@@ -154,33 +155,12 @@ class TimeEntries(Controller):
         # return result
         return data
 
-    def ignored_projects(self) -> []:
-        '''Returns the list of ignored projects configured by settings'''
-        try:
-            id_list = self.setting(IGNORED_PROJECTS_SETTING).split(',')
-            return [int(d) for d in id_list] if id_list else []
-        except Exception as e:
-            self.app.log.error(str(e), __name__)
-            return []
-
     def user_id(self) -> int:
         '''Returns the current user id (defined by the Redmine API Key)'''
         user = self.app.redmine.user.get('current')
         if user is None:
             raise ValueError('Current user could not be found.')
         return user.id
-
-    def projects(self, ignored_projects=None, use_alias=True):
-        '''Returns active projects for the current User. Additionally a list of ignored projects can be passed.'''
-        result = []
-        for p in self.app.redmine.project.all().filter(status=1):
-            if ignored_projects and p.id in ignored_projects:
-                continue
-            if use_alias:
-                alias = self.project_alias(p.id)
-                p.name = alias if alias else p.name
-            result.append(p)
-        return result
 
     def time_entries(self, user_id, project_id, from_date=date.today(), to_date=date.today()):
         '''Returns the time entries filtered by user, project and date ranage'''
@@ -195,19 +175,3 @@ class TimeEntries(Controller):
 
         if hours > 8:
             self.app.log.warning('You have logged more than 8 hours today.')
-
-    def setting(self, setting_name: str) -> str:
-        '''Returns the setting value from the local db given the setting name'''
-        setting = self.app.db.search(Query().name == setting_name)
-        if setting:
-            return setting[0].get('value')
-        return None
-
-    def project_alias(self, project_id: int) -> str:
-        '''Returns the alias for the project if it exists. Returns None otherwise.'''
-        table = self.app.db.table('project_alias')
-        alias_query = Query()
-        aliases = table.search(alias_query.project_id == str(project_id))
-        if aliases:
-            return aliases[0]['alias']
-        return None
