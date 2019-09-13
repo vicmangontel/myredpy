@@ -5,9 +5,11 @@ from cement import App, TestApp, init_defaults
 from cement.core.exc import CaughtSignal
 from cement.utils import fs
 from .core.exc import MyRedPyAppError
+from .core.api import Api
 from .controllers.base import Base
 from .controllers.projects import Projects
 from .controllers.time_entries import TimeEntries
+from .controllers.issues import Issues
 from .controllers.settings import Settings
 
 # configuration defaults
@@ -38,6 +40,12 @@ def extend_tinydb(app):
     app.extend('db', TinyDB(db_file))
 
 
+def extend_api(app):
+    app.log.debug('Setting up project api')
+    api = Api(app)
+    app.extend('api', api)
+
+
 class MyRedPyApp(App):
     """MyRedPy primary application."""
 
@@ -46,7 +54,8 @@ class MyRedPyApp(App):
 
         hooks = [
             ('post_setup', extend_tinydb),
-            ('pre_run', extend_redmine)
+            ('pre_run', extend_redmine),
+            ('pre_run', extend_api)
         ]
 
         # call sys.exit() on close
@@ -75,7 +84,8 @@ class MyRedPyApp(App):
             Base,
             Projects,
             TimeEntries,
-            Settings
+            Settings,
+            Issues
         ]
 
 

@@ -1,8 +1,10 @@
+import calendar
 from datetime import date, datetime, timedelta
 from tinydb import Query
 from cement import Controller, ex
 from myredpy.core.formatters import to_multiline_text
 from myredpy.core.settings_name import (OMITT_PREFIX_SETTING, IGNORED_PROJECTS_SETTING)
+from myredpy.core.api import Api
 
 
 class TimeEntries(Controller):
@@ -12,12 +14,6 @@ class TimeEntries(Controller):
         stacked_on = 'base'
 
         arguments = [
-            (['-p', '--period'],
-             {
-                'help': 'specify the period to show. Valid values: [day, week, last-week, bi-week, month]',
-                'action': 'store',
-                'dest': 'period'
-            }),
             (['-sw', '--show-weekends'],
              {
                 'help': 'specify if weekends will be shown',
@@ -26,34 +22,10 @@ class TimeEntries(Controller):
             })
         ]
 
-    def _default(self):
-        """Default action if no sub-command is passed."""
-        try:
-            user = self.app.redmine.user.get('current')
-            if user is None:
-                raise ValueError('Current user could not be found.')
+    @ex(help='Todays entries grouped by project')
+    def today(self):
+        projects = self.app.api.projects()
 
-            period = self.app.pargs.period
-            if period is not None:
-                if period == 'day':
-                    self.today_entries(user.id)
-                if period == 'week':
-                    self.entries_by_week(user.id, date.today(), self.app.pargs.show_weekends)
-                if period == 'last-week':
-                    last_week_date = date.today() - timedelta(days=7)
-                    self.entries_by_week(user.id, last_week_date, self.app.pargs.show_weekends)
-                if period == 'bi-weekly':
-                    print('bi-weekly')
-                if period == 'month':
-                    print('month')
-            else:
-                self.today_entries(user.id)
-        except Exception as e:
-            self.app.log.debug(repr(traceback.extract_stack()))
-            self.app.log.error(str(e), __name__)
-
-    def today_entries(self, user_id):
-        projects = self.projects(self.ignored_projects())
         if len(projects) == 0:
             self.app.log.info('Projects were not found...')
             return
@@ -61,7 +33,7 @@ class TimeEntries(Controller):
         data = []
         total_hours = 0
         for p in projects:
-            project_hours = sum(x.hours for x in self.time_entries(user_id, p.id))
+            project_hours = sum(x.hours for x in self.time_entries(self.user_id(), p.id))
             data.append([p.id, p.name, project_hours])
             total_hours += project_hours
         # add totals row at the bottom
@@ -71,7 +43,19 @@ class TimeEntries(Controller):
         self.app.render(data, headers=['id', 'project', 'hours'], tablefmt='fancy_grid')
         self.display_daily_summary(total_hours)
 
-    def entries_by_week(self, user_id, week_date=date.today(), show_weekends=False):
+    @ex(
+        help='Weekly entries grouped by project. Can display last week entries',
+        arguments=[(['-l', '--last-week'], {
+            'help': 'specify if last week time entries should be displayed instead of current week ones',
+            'action': 'store_true',
+            'dest': 'display_last_week'
+        })]
+    )
+    def week(self, show_weekends=False):
+        week_date = date.today()
+        if self.app.pargs.display_last_week:
+            week_date = date.today() - timedelta(days=7)
+        # define the start of the week
         monday = week_date - timedelta(days=week_date.weekday())
         # move to the previous week if last-week options was sent.
         days_to_show = 5
@@ -82,8 +66,8 @@ class TimeEntries(Controller):
         headers = ['project']
         prefix_to_omitt = self.setting(OMITT_PREFIX_SETTING)
 
-        for p in self.projects(self.ignored_projects()):
-            entries = self.time_entries(user_id, p.id, monday, monday + timedelta(days=5))
+        for p in self.app.api.projects():
+            entries = self.time_entries(self.user_id(), p.id, monday, monday + timedelta(days=5))
             days_to_check = range(0, days_to_show)
             entry_per_day = []
             day = monday
@@ -106,23 +90,77 @@ class TimeEntries(Controller):
         self.app.render(data, headers=headers, tablefmt='fancy_grid')
         self.app.log.info('Period Total Spent Time: {}'.format(sum(x for x in totals)))
 
-    def ignored_projects(self) -> []:
-        '''Returns the list of ignored projects configured by settings'''
-        try:
-            id_list = self.setting(IGNORED_PROJECTS_SETTING).split(',')
-            return [int(d) for d in id_list] if id_list else []
-        except Exception as e:
-            self.app.log.error(str(e), __name__)
-            return []
+    @ex(help='Fortnight (15 days) entries for current period. I.e. 1-15 or 16-31')
+    def fortnight(self):
+        today = date.today()
+        date_range = (today, today)
+        total_days = 15
+        # check if it is first or second month fortnight and adjust the date range
+        if today.day < 16:
+            date_range = (date(today.year, today.month, 1), date(today.year, today.month, 15))
+        else:
+            last_day = calendar.monthrange(today.year, today.month)[1]
+            total_days = last_day - 15
+            date_range = (date(today.year, today.month, 16), date(today.year, today.month, last_day))
 
-    def projects(self, ignored_projects=None):
-        '''Returns active projects for the current User. Additionally a list of ignored projects can be passed.'''
-        result = []
-        for p in self.app.redmine.project.all().filter(status=1):
-            if ignored_projects and p.id in ignored_projects:
-                continue
-            result.append(p)
-        return result
+        projects = self.app.api.projects()
+        # retrieve and calculate time entries
+        data = self.time_entries_by_date_range(projects, date_range, total_days)
+        self.app.render(data, headers="firstrow", tablefmt='fancy_grid')
+
+    @ex(help='Monthly entries for current period')
+    def month(self):
+        today = date.today()
+        total_days = calendar.monthrange(today.year, today.month)[1]
+        date_range = (date(today.year, today.month, 1), date(today.year, today.month, total_days))
+        data = self.time_entries_by_date_range(api.projects(), date_range, total_days)
+        self.app.render(data, headers="firstrow", tablefmt='fancy_grid')
+
+    def time_entries_by_date_range(self, projects, date_range, total_days):
+        w, h = (len(projects) + 2), (total_days + 2)
+        data = [[0 for x in range(w)] for y in range(h)]
+        data[0][0] = 'C|_|'
+        data[0][len(projects)+1] = 'Sum'
+        data[total_days+1][0] = 'Total'
+
+        current_project = 1
+        #total_hours_in_period = 0
+        for p in projects:
+            day = date_range[0]
+            entries = self.time_entries(self.user_id(), p.id, date_range[0], date_range[1])
+            total_hours_by_project = 0
+           # set project name as header
+            data[0][current_project] = p.name
+            # get and sum time entries
+            for i in range(1, total_days+1):
+                data[i][0] = day.strftime('%a-%d.%m')
+                if day.weekday() > 4 and not self.app.pargs.show_weekends:
+                    data[i][current_project] = '***'
+                else:
+                    data[i][current_project] = sum(e.hours for e in filter(lambda x: x.spent_on == day, entries))
+                    total_hours_by_project += data[i][current_project]
+                # sum current row totals per day
+                if isinstance(data[i][current_project], str):
+                    data[i][len(projects)+1] = '***'
+                else:
+                    data[i][len(projects)+1] += data[i][current_project]
+                # advance to next day calculations
+                day = day + timedelta(days=1)
+            # print sumary
+            data[total_days+1][current_project] = total_hours_by_project
+            #total_hours_in_period += total_hours_by_project
+            data[total_days+1][len(projects)+1] += total_hours_by_project
+            # advance to the next project
+            current_project += 1
+        # return result
+        return data
+
+    def user_id(self) -> int:
+        '''Returns the current user id (defined by the Redmine API Key)'''
+        user = self.app.redmine.user.get('current')
+        if user is None:
+            raise ValueError('Current user could not be found.')
+        return user.id
 
     def time_entries(self, user_id, project_id, from_date=date.today(), to_date=date.today()):
         '''Returns the time entries filtered by user, project and date ranage'''
@@ -137,10 +175,3 @@ class TimeEntries(Controller):
 
         if hours > 8:
             self.app.log.warning('You have logged more than 8 hours today.')
-
-    def setting(self, setting_name: str) -> str:
-        '''Returns the setting value from the local db given the setting name'''
-        setting = self.app.db.search(Query().name == setting_name)
-        if setting:
-            return setting[0].get('value')
-        return None
