@@ -64,7 +64,7 @@ class TimeEntries(Controller):
 
         data = []
         headers = ['project']
-        prefix_to_omitt = self.setting(OMITT_PREFIX_SETTING)
+        prefix_to_omitt = self.prefix_to_omit()
 
         for p in self.app.api.projects():
             entries = self.time_entries(self.user_id(), p.id, monday, monday + timedelta(days=5))
@@ -175,3 +175,11 @@ class TimeEntries(Controller):
 
         if hours > 8:
             self.app.log.warning('You have logged more than 8 hours today.')
+
+    def prefix_to_omit(self) -> str:
+        '''Gets or sets the setting specified by name.'''
+        Setting = Query()
+        setting = self.app.db.search(Setting.name == OMITT_PREFIX_SETTING)
+        if setting:
+            return setting[0]['value']
+        return ''
