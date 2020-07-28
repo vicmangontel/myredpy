@@ -8,9 +8,9 @@ from .core.exc import MyRedPyError, MissingConfigurationError
 from .core.api import Api
 from .controllers.base import Base
 from .controllers.projects import Projects
-# from .controllers.time_entries import TimeEntries
+from .controllers.time_entries import TimeEntries
 # from .controllers.issues import Issues
-# from .controllers.settings import Settings
+from .controllers.settings import Settings
 
 # configuration defaults
 CONFIG = init_defaults('myredpy', 'log.logging')
@@ -85,8 +85,8 @@ class MyRedPyApp(App):
         handlers = [
             Base,
             Projects,
-            # TimeEntries,
-            # Settings,
+            TimeEntries,
+            Settings,
             # Issues
         ]
 

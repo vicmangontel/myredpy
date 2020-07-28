@@ -9,7 +9,7 @@ def to_multiline_text(name:str, max_line_length=40, max_length=80, omitt_prefix=
     name = (name[:max_length] + '..') if len(name) > max_length else name
 
     acc_length = 0
-    words = name.split('')
+    words = name.split(' ')
     formatted_name = ''
     for word in words:
         if acc_length + (len(word) + 1) <= max_line_length:
